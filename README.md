@@ -10,32 +10,40 @@ The application allows users to log in, browse products, search and filter produ
 * Protected product dashboard
 * Logout functionality
 * Product listing
-* Responsive desktop table and mobile cards
-* Product search with debounce
+* Responsive desktop table
+* Responsive mobile product cards
+* Product search with 500ms debounce
 * Category filtering
 * Sorting by:
 
   * Price
   * Rating
   * Title
-* Pagination with page sizes:
+* Ascending and descending sorting
+* Pagination using `limit` and `skip`
+* Page sizes:
 
   * 10
   * 20
   * 50
-* URL-based search, filter, sorting, and pagination state
+* Page numbers
+* Previous and Next buttons
+* URL-based pagination, search, category, and sorting state
 * Product details page
+* Product images
 * Product reviews
 * Add product form
 * Edit product form
 * Delete confirmation
 * Form validation
 * Loading states
-* Error states with retry
-* Empty search results state
+* Error states with Retry
+* Empty search/filter state
 * Invalid URL parameter handling
 * Protection against stale search responses
-* Shared Axios instance with request and response interceptors
+* Shared Axios instance
+* Axios request and response interceptors
+* API calls separated from UI components
 
 ## Tech Stack
 
@@ -64,12 +72,14 @@ src/
 │
 └── app/
     ├── page.js
+    │
     ├── login/
     │   └── page.js
     │
     └── products/
         ├── page.js
         ├── not-found.js
+        │
         ├── add/
         │   └── page.js
         │
@@ -84,7 +94,7 @@ src/
 ### 1. Clone the repository
 
 ```bash
-git clone YOUR_GITHUB_REPOSITORY_URL
+git clone https://github.com/munshiahmedi/product-admin-dashboard.git
 ```
 
 ### 2. Go to the project directory
@@ -113,7 +123,7 @@ http://localhost:3000
 
 ## Login Credentials
 
-The assignment uses the following DummyJSON test credentials:
+The application uses the following DummyJSON test credentials:
 
 ```text
 Username: emilys
@@ -141,7 +151,7 @@ PUT /products/{id}
 DELETE /products/{id}
 ```
 
-## Axios Setup
+## Shared Axios Setup
 
 All API requests use a shared Axios instance located at:
 
@@ -149,20 +159,97 @@ All API requests use a shared Axios instance located at:
 src/lib/axios.js
 ```
 
-The Axios instance contains:
+The shared Axios instance handles:
 
 * Base API URL
 * Common headers
 * Authentication token handling
+* Request interceptor
 * Centralized response error handling
 
-The login token is stored after successful authentication and is added to API requests through the Axios request interceptor.
+After successful login, the authentication token is stored in `localStorage`.
+
+The Axios request interceptor automatically adds the token to subsequent API requests.
+
+## Authentication and Route Protection
+
+The login page sends credentials to:
+
+```text
+POST /auth/login
+```
+
+After successful authentication, the access token is stored and the user is redirected to the product dashboard.
+
+Protected product pages use an `AuthGuard` component to check whether an authentication token exists.
+
+If a user is not authenticated, they are redirected to the login page.
+
+The logout button removes the stored token and redirects the user back to login.
+
+## Product Listing
+
+The product dashboard displays:
+
+* Product image
+* Product title
+* Category
+* Price
+* Rating
+* Stock
+
+On desktop screens, products are displayed in a table.
+
+On smaller screens, products are displayed as responsive cards.
+
+## Pagination
+
+Pagination uses the DummyJSON `limit` and `skip` parameters.
+
+The skip value is calculated using:
+
+```text
+skip = (page - 1) * limit
+```
+
+For example:
+
+```text
+Page 1, limit 10
+skip = 0
+
+Page 2, limit 10
+skip = 10
+
+Page 3, limit 10
+skip = 20
+```
+
+The dashboard also displays the current product range.
+
+Example:
+
+```text
+Showing 21–40 of 194
+```
+
+Available page sizes:
+
+```text
+10
+20
+50
+```
 
 ## Search and Debouncing
 
-Product search uses the DummyJSON search endpoint.
+Product search uses:
 
-A **500ms debounce** is used so the application does not send a request for every keystroke.
+```text
+GET /products/search?q=
+```
+
+A 500ms debounce is used so that the application waits until the user stops typing before making the API request.
 
 For example, when the user types:
 
@@ -170,13 +257,58 @@ For example, when the user types:
 laptop
 ```
 
-the application waits until the user stops typing before sending the search request.
+the application waits briefly after the last keystroke before sending the request.
 
-## Search + Category Behavior
+When the search changes, pagination is reset to page 1.
 
-DummyJSON provides separate endpoints for product search and category filtering.
+## Search Race Condition
 
-Because there is no dedicated endpoint for combining both operations, this application gives **search priority** when both search and category are selected.
+When users type quickly, multiple search requests can be in progress at the same time.
+
+For example:
+
+```text
+Request A → laptop
+Request B → laptops
+```
+
+Request A might finish after Request B.
+
+To prevent old results from replacing newer results, the application tracks each request using a request ID.
+
+Only the latest request is allowed to update the product state.
+
+This prevents stale search responses from overwriting newer results.
+
+The same logic can be tested with an API delay such as:
+
+```text
+&delay=2000
+```
+
+## Category Filtering
+
+Categories are loaded from:
+
+```text
+GET /products/categories
+```
+
+Products can then be filtered using the category endpoint:
+
+```text
+GET /products/category/{category}
+```
+
+The selected category is stored in the URL.
+
+Changing the category resets pagination to page 1.
+
+## Search and Category Behavior
+
+DummyJSON provides separate endpoints for search and category filtering and does not provide a combined search-and-category endpoint.
+
+Therefore, this application gives search priority when both search and category are selected.
 
 The behavior is:
 
@@ -191,33 +323,38 @@ Search + category
 → /products/search
 ```
 
-When both are selected, the category is ignored and the search endpoint is used.
+When both values are selected, the category filter is not applied to the search request.
 
 This is an intentional implementation decision based on the available DummyJSON API.
 
-## Pagination
+## Sorting
 
-Pagination uses the API's `limit` and `skip` parameters.
+Products can be sorted by:
+
+* Price
+* Rating
+* Title
+
+Both ascending and descending order are supported.
+
+The sorting state is stored in the URL.
 
 Example:
 
 ```text
-Page 1, limit 10
-skip = 0
-
-Page 2, limit 10
-skip = 10
-```
-
-The dashboard also displays the current range, for example:
-
-```text
-Showing 21–40 of 194
+/products?page=1&limit=20&sortBy=price&sortOrder=asc
 ```
 
 ## URL State
 
-Search, category, sorting, page, and page size are stored in the URL.
+The product dashboard stores the following values in the URL:
+
+* Page
+* Page size
+* Search
+* Category
+* Sort field
+* Sort order
 
 Example:
 
@@ -225,109 +362,254 @@ Example:
 /products?page=2&limit=20&search=laptop&sortBy=price&sortOrder=asc
 ```
 
-This allows the current dashboard state to be preserved when the page is refreshed or shared.
+This allows the dashboard state to remain available when the page is refreshed or when the URL is shared.
 
-Invalid values such as:
+Invalid values are handled safely.
+
+For example:
 
 ```text
-?page=abc
-?limit=999
+/products?page=abc
+/products?limit=999
 ```
 
-are handled safely by falling back to valid default values.
+The application falls back to valid default values instead of breaking.
 
-## Race Condition Handling
+## Product Details
 
-Search requests can take different amounts of time to complete.
+Product details are available at:
 
-To prevent an older request from overwriting newer search results, the application tracks each request and ignores stale responses.
+```text
+/products/[id]
+```
 
-This ensures that fast typing does not cause outdated search results to replace newer results.
+The details page displays:
 
-## Form Validation
-
-The Add Product and Edit Product forms validate:
-
+* Product images
 * Product title
+* Category
+* Description
+* Price
+* Rating
+* Stock
+* Brand when available
+* Reviews
+
+If an invalid product ID is requested, the application displays a product not found page instead of crashing.
+
+## Add Product
+
+The Add Product page is available at:
+
+```text
+/products/add
+```
+
+The form contains:
+
+* Title
 * Description
 * Price
 * Stock
 * Category
 
-Examples:
+Validation includes:
 
 ```text
 Product title is required.
+
 Product description is required.
+
 Price must be greater than 0.
+
 Stock cannot be negative.
+
 Category is required.
 ```
 
-## Loading, Error and Empty States
+The form also prevents multiple Save requests while a request is already in progress.
 
-The application handles:
+The API request is handled through the separate product API module.
 
-### Loading
+An image input is not included because the assignment requires product images to be displayed, but does not specifically require an image upload/input field for the Add/Edit form.
+
+## Edit Product
+
+The Edit Product page is available at:
+
+```text
+/products/[id]/edit
+```
+
+When the page loads, the existing product information is fetched and displayed in the form.
+
+The same validation rules used by Add Product are applied to Edit Product.
+
+The form prevents multiple Update requests while a request is already in progress.
+
+## Delete Product
+
+The product details page includes a Delete button.
+
+Before deleting, the application displays a confirmation popup:
+
+```text
+Are you sure you want to delete this product?
+```
+
+If the user cancels, no delete request is sent.
+
+If the user confirms, the application calls:
+
+```text
+DELETE /products/{id}
+```
+
+The Delete button also has a loading state to prevent multiple delete requests.
+
+## DummyJSON Mutation Behavior
+
+DummyJSON provides Add, Update, and Delete endpoints for this assignment, but these mutation operations are simulated and are not permanently persisted in the remote dataset.
+
+Because of this limitation, an Add, Update, or Delete request can succeed while a later fresh API request may still return the original dataset.
+
+The application implements the required mutation request flows, handles success and error responses, and redirects the user appropriately after the operation.
+
+The README does not treat these simulated API mutations as permanently persisted database changes.
+
+## Loading States
+
+Loading states are provided for important asynchronous operations, including:
+
+* Login
+* Product loading
+* Product details loading
+* Add product
+* Edit product
+* Delete product
+
+Example:
 
 ```text
 Loading products...
 ```
 
-### Error
+## Error States
+
+API errors are handled and displayed to the user.
+
+For product loading failures, the dashboard displays an error message and a Retry button.
+
+Example:
 
 ```text
 Failed to load products. Please try again.
 ```
 
-A Retry button is provided when product loading fails.
+The Retry button triggers the product request again.
 
-### Empty State
+## Empty State
 
-When no products match the search or filter:
+When a search or filter does not return any products, the dashboard displays:
 
 ```text
 No products found
+
 Try changing your search or filters.
 ```
 
-## DummyJSON Mutation Behavior
+## Form Validation
 
-DummyJSON supports the Add, Update, and Delete API operations used in this assignment, but these mutation operations are simulated.
+Both Add and Edit forms validate user input before sending API requests.
 
-Therefore, a newly added, updated, or deleted product may not permanently change the remote DummyJSON dataset after another request or page refresh.
+The application checks:
 
-The UI still implements the required CRUD request flows and handles success/error states.
+* Required title
+* Required description
+* Positive price
+* Non-negative stock
+* Required category
+
+Validation errors are displayed directly in the form.
 
 ## Responsive Design
 
-The dashboard uses responsive layouts:
+Tailwind CSS responsive utilities are used to provide different layouts for desktop and mobile devices.
 
-* Desktop: product table
-* Mobile: product cards
-
-The interface is built using Tailwind CSS responsive utilities.
-
-## Assignment Approach
-
-The project keeps API calls separate from UI components.
-
-API functions are located in:
+Desktop:
 
 ```text
-src/api/
+Product table
 ```
 
-Reusable application-level functionality such as Axios configuration and authentication protection is separated into:
+Mobile:
+
+```text
+Product cards
+```
+
+Forms and dashboard controls are also designed to work on smaller screens.
+
+## Component and API Structure
+
+API functions are kept separate from the UI.
+
+API files:
+
+```text
+src/api/auth.js
+src/api/products.js
+```
+
+Shared application functionality is separated into:
 
 ```text
 src/lib/
 src/components/
 ```
 
-This keeps the application easier to understand and maintain.
+This keeps API logic, authentication logic, and UI responsibilities separated and makes the project easier to understand and maintain.
 
-## Build
+## Assignment Rules Followed
+
+The project does not use:
+
+* React Query
+* SWR
+* Ready-made table libraries
+* Ready-made pagination libraries
+
+Pagination, search debounce, URL state handling, and race-condition handling are implemented manually.
+
+All API requests use Axios.
+
+## Development Notes
+
+### Design Choices
+
+A shared Axios instance is used so authentication headers and common API error handling can be managed in one place.
+
+API calls are separated into dedicated API files instead of being written directly inside UI components.
+
+Pagination, search, category filtering, and sorting are stored in the URL so the current dashboard state can be refreshed or shared.
+
+### Problem Faced
+
+One problem was preventing older search requests from replacing newer search results when multiple requests were running at the same time.
+
+This was solved by tracking each request with a request ID and only allowing the latest request to update the product state.
+
+### AI Assistance
+
+AI tools were used during development for implementation suggestions, debugging, code structure, and explaining technical issues.
+
+The generated suggestions were reviewed, tested, and modified during development. The final implementation was tested locally and the production build was verified with:
+
+```bash
+npm run build
+```
+
+## Build and Production
 
 To create a production build:
 
@@ -341,6 +623,12 @@ To run the production build locally:
 npm start
 ```
 
+## GitHub Repository
+
+Public repository:
+
+https://github.com/munshiahmedi/product-admin-dashboard
+
 ## Notes
 
 This project was developed as a frontend assignment using the provided DummyJSON API.
@@ -349,20 +637,13 @@ The implementation focuses on:
 
 * Clear component structure
 * Reusable API functions
+* Shared Axios configuration
 * Responsive UI
-* URL state management
+* URL-based state management
 * Form validation
-* Error handling
-* Reliable search behavior
-* Understanding and documenting API limitations
-
-```
-
-### After pasting
-
-Save `README.md`.
-
-**Don't deploy yet.** First we'll do the **final code cleanup/check** so we don't push unnecessary code or mistakes to GitHub.
-
-Tell me **“README done”** when you've saved it.
-```
+* Loading and error handling
+* Search debouncing
+* Race-condition prevention
+* Manual pagination
+* Documented API limitations
+* Maintainable project structure
